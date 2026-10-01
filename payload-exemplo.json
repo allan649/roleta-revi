@@ -1,0 +1,20 @@
+{
+  "evento": "Nome do Evento 2026",
+  "campanha": "ROLETA-EVENTO-26",
+  "cliente": {
+    "nome": "Maria Silva",
+    "email": "maria.silva@exemplo.com",
+    "telefone": "5511987654321",
+    "data_nascimento": "1990-05-12",
+    "data_nascimento_br": "12/05/1990"
+  },
+  "premio": {
+    "id": "p10-site",
+    "nome": "10% OFF no site todo",
+    "cupom": "ROLETA10",
+    "regras": "Compra mínima de R$200. Válido até 31/12/2026 às 23h59."
+  },
+  "origem": "lp-roleta-evento-26",
+  "id_participacao": "3f0c6b1e-6a1d-4c5e-9d0e-2b7f7c1a9e11",
+  "enviado_em": "2026-10-01T14:30:00.000Z"
+}

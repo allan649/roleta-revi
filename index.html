@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">
+<title>Roleta de prêmios</title>
+<meta name="description" content="Cadastre-se, gire a roleta e ganhe um cupom de desconto.">
+<meta name="theme-color" content="#111111">
+<meta name="robots" content="noindex">
+<link rel="icon" id="favicon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Fonte da marca: troque aqui e em TEMA.fonte (no script, mais abaixo) -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* valores de partida; o script aplica as cores de TEMA por cima */
+    --ink:#111111; --ink-2:#2b2b2b; --muted:#6b6b6b; --paper:#fff;
+    --sand:#f1efec; --line:#e3e0dc;
+    --gold:#9c7419; --gold-2:#c99a2e; --gold-3:#e9c96b;
+    --error:#b3261e;
+    --wheel:min(80vw, 46vh);  /* o script recalcula para caber na tela */
+    --font:'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  /* Tudo em rem: a escala acompanha a tela (totem vertical 1080×1920 ≈ 20px) */
+  html{font-size:clamp(14px, min(1.05vh, 1.95vw), 26px);-webkit-text-size-adjust:100%}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{font-family:var(--font);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;
+       display:flex;flex-direction:column;height:100dvh;
+       touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  input{user-select:text;-webkit-user-select:text}
+  img,svg{display:block}
+  button{font-family:inherit;touch-action:manipulation}
+  [hidden]{display:none !important}
+
+  /* ——— Letreiro do topo (benefícios da marca) ——— */
+  .adbar{flex:none;background:var(--ink);color:#fff;height:2rem;overflow:hidden;display:flex;align-items:center;font-size:.69rem;letter-spacing:.2em;text-transform:uppercase}
+  .adbar__track{display:flex;white-space:nowrap;animation:marquee 34s linear infinite}
+  .adbar__group{display:flex;gap:3rem;padding-right:3rem}
+  .adbar__group span::before{content:'•';margin-right:3rem;color:var(--gold-2)}
+  .adbar__group span:first-child::before{content:none}
+  @keyframes marquee{to{transform:translateX(-50%)}}
+
+  /* ——— Header ——— */
+  .header{flex:none;background:#fff;border-bottom:1px solid var(--line);padding:.9rem 1rem .75rem;text-align:center}
+  .header__logo{height:1.85rem;width:auto;max-width:70vw;object-fit:contain;margin:0 auto}
+  .header__nome{display:block;font-size:1.45rem;line-height:1.85rem;font-weight:700;letter-spacing:.28em;text-transform:uppercase}
+  .header__tag{margin-top:.5rem;font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
+  .header__tag b{color:var(--ink);font-weight:600}
+
+  /* ——— Palco (ocupa todo o espaço entre header e rodapé) ——— */
+  .stage{flex:1;min-height:0;position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;padding:1.3rem 1rem .9rem}
+  .stage__bg{position:absolute;inset:0;z-index:-2;display:grid;grid-template-columns:repeat(var(--fotos,3),1fr);gap:4px;background:#fff}
+  .stage__bg div{overflow:hidden}
+  .stage__bg img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;filter:blur(4px) saturate(1.05);transform:scale(1.08)}
+  .stage__bg.is-gradiente{display:block;background:radial-gradient(120% 80% at 50% 0%,var(--gold-2) 0%,transparent 60%),linear-gradient(180deg,var(--ink-2) 0%,var(--ink) 100%)}
+  .stage__veil{position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.42) 0%,rgba(0,0,0,.14) 30%,rgba(255,255,255,.06) 65%,rgba(255,255,255,.5) 100%)}
+  @media (max-aspect-ratio:1/2){ .stage__bg:not(.is-gradiente){grid-template-columns:1fr} .stage__bg div:not(:first-child){display:none} }
+
+  /* título do palco: só aparece depois do cadastro ("Boa sorte, …"), por cima da roleta */
+  .stage__head{position:absolute;left:1rem;right:1rem;top:1.3rem;z-index:2;text-align:center;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.28);max-width:40rem;margin:0 auto;transition:opacity .35s}
+  .stage[data-state="form"] .stage__head{opacity:0;visibility:hidden}
+  .eyebrow{font-size:.69rem;font-weight:500;letter-spacing:.34em;text-transform:uppercase}
+  .stage__title{margin-top:.4rem;font-size:2.7rem;font-weight:700;line-height:1.02;letter-spacing:.05em;text-transform:uppercase}
+  .stage__sub{margin-top:.5rem;font-size:.95rem;font-weight:400}
+  .stage__sub b{font-weight:600;color:var(--gold-3)}
+
+  .play{flex:1;min-height:0;display:grid;grid-template:100% / 100%;place-items:unsafe center} /* unsafe: roleta maior que a tela transborda igual dos dois lados */
+
+  /* ——— Roleta ——— */
+  .wheel{grid-area:1/1;position:relative;width:var(--wheel);height:var(--wheel);transition:width .6s cubic-bezier(.2,.8,.2,1),height .6s cubic-bezier(.2,.8,.2,1)}
+  .wheel::before{content:'';position:absolute;inset:-4.5%;border-radius:50%;background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.55);box-shadow:0 30px 80px rgba(0,0,0,.28)}
+  .wheel__svg{position:absolute;inset:0;width:100%;height:100%;will-change:transform}
+  .wheel__svg text{font-family:var(--font);text-anchor:middle}
+  .wheel__pointer{position:absolute;left:50%;top:-5.2%;width:10.5%;translate:-50% 0;transform-origin:50% 28%;z-index:2;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+  .wheel__pointer.tick{animation:tick .14s ease-out}
+  @keyframes tick{35%{rotate:-16deg}100%{rotate:0deg}}
+  .dot--blink{animation:blink 1.2s ease-in-out infinite}
+  .dot--blink.alt{animation-delay:.6s}
+  @keyframes blink{50%{opacity:.25}}
+
+  .hub{position:absolute;left:50%;top:50%;width:23.6%;aspect-ratio:1;translate:-50% -50%;z-index:2;border:0;border-radius:50%;cursor:pointer;color:var(--ink);
+       background:radial-gradient(circle at 50% 32%,#fff 0%,var(--sand) 100%);
+       box-shadow:0 0 0 calc(var(--wheel)*.009) var(--gold),0 12px 30px rgba(0,0,0,.38);
+       font-weight:700;font-size:calc(var(--wheel)*.037);letter-spacing:.14em;display:grid;place-items:center;transition:scale .15s}
+  .hub span{display:block;line-height:1.1}
+  .hub small{display:block;font-size:.42em;font-weight:500;letter-spacing:.24em;color:var(--muted);margin-top:.35em}
+  .hub:disabled{cursor:default}
+  .hub:not(:disabled):active{scale:.96}
+  .is-ready .hub{animation:pulse 1.5s ease-in-out infinite}
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 calc(var(--wheel)*.009) var(--gold),0 0 0 0 color-mix(in srgb,var(--gold-2) 70%,transparent),0 12px 30px rgba(0,0,0,.38)}
+    60%{box-shadow:0 0 0 calc(var(--wheel)*.009) var(--gold),0 0 0 calc(var(--wheel)*.06) transparent,0 12px 30px rgba(0,0,0,.38)}
+  }
+
+  /* ——— Vidro ——— */
+  .glass{background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);border:1px solid rgba(255,255,255,.75);box-shadow:0 24px 70px rgba(0,0,0,.24)}
+
+  /* ——— Cadastro (popup sobre a roleta) ——— */
+  .card{grid-area:1/1;position:relative;z-index:3;width:min(31rem,94vw);padding:1.6rem 1.35rem 1.25rem;
+        transition:opacity .35s ease,transform .35s ease,translate .25s ease}
+  .card.is-leaving{opacity:0;transform:translateY(1.75rem);pointer-events:none}
+  .card__head{text-align:center}
+  .card__eyebrow{font-size:.66rem;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:var(--gold)}
+  .card__title{margin-top:.35rem;font-size:2.4rem;font-weight:700;line-height:1.02;letter-spacing:.05em;text-transform:uppercase}
+  .card__sub{margin-top:.45rem;font-size:.95rem;color:var(--ink-2)}
+  .card__sub b{font-weight:700;color:var(--gold)}
+  .card__lead{margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted);line-height:1.5;text-align:center}
+  .card__lead b{color:var(--ink-2)}
+  .fields{display:grid;gap:.75rem;margin-top:1rem}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+  @media (max-width:340px){ .row2{grid-template-columns:1fr} }
+  .field label{display:block;margin-bottom:.35rem;font-size:.64rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .field input{width:100%;height:2.95rem;padding:0 .85rem;border:1px solid var(--line);border-radius:2px;background:rgba(255,255,255,.92);color:var(--ink);font:400 max(16px,1rem) var(--font);outline:none;transition:border-color .15s,box-shadow .15s}
+  .field input::placeholder{color:#a3a3a3}
+  .field input:focus{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 22%,transparent)}
+  .field.is-invalid input{border-color:var(--error)}
+  .field__err{margin-top:.3rem;font-size:.72rem;color:var(--error)}
+  .field__err:empty{display:none}
+  .suggest{margin-top:.35rem;font-size:.78rem;color:var(--ink-2)}
+  .suggest button{border:0;background:none;padding:.2rem 0;font:600 .78rem var(--font);color:var(--gold);text-decoration:underline;cursor:pointer}
+  .form-err{font-size:.8rem;color:var(--error);text-align:center}
+  .form-err:empty{display:none}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:.6rem;width:100%;height:3.35rem;border:0;border-radius:2px;background:var(--ink);color:#fff;font-size:.8rem;font-weight:600;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;transition:background .15s}
+  .btn:active{transform:translateY(1px);background:var(--ink-2)}
+  .btn svg{width:1.1rem;height:1.1rem}
+  .btn--ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+  .btn--ghost:active{background:var(--ink);color:#fff}
+  .powered{display:flex;align-items:center;justify-content:center;gap:.55rem;margin-top:.95rem;font-size:.6rem;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .powered svg{height:1.45rem;width:auto}
+
+  /* ——— Status de envio (só aparece com falha, sem internet ou em ?teste=1) ——— */
+  .sync{position:fixed;left:50%;bottom:.6rem;translate:-50% 0;z-index:70;padding:.3rem .7rem;border-radius:99px;background:rgba(255,255,255,.9);font-size:.6rem;color:var(--muted);white-space:nowrap}
+  .sync:empty{display:none}
+  .sync::before{content:'';display:inline-block;width:.45rem;height:.45rem;border-radius:50%;background:#2e9d5b;margin-right:.4rem;vertical-align:.05rem}
+  .sync.is-pending::before{background:#d08b16}
+  .sync.is-error::before{background:#c0392b}
+
+  /* ——— Resultado ——— */
+  .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1rem;background:rgba(0,0,0,.34);-webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);overflow:hidden}
+  .result{width:min(29rem,100%);max-height:100%;padding:1.9rem 1.5rem 1.5rem;text-align:center;animation:pop .55s cubic-bezier(.2,.9,.3,1.25)}
+  @keyframes pop{from{opacity:0;transform:scale(.88) translateY(12px)}}
+  .result__hello{font-size:.75rem;font-weight:600;letter-spacing:.3em;text-transform:uppercase;color:var(--gold)}
+  .result__won{margin-top:.4rem;font-size:1rem;color:var(--ink-2)}
+  .result__prize{display:flex;align-items:flex-start;justify-content:center;gap:.5rem;margin-top:.4rem}
+  .result__value{font-size:5.4rem;font-weight:700;line-height:1;letter-spacing:-.01em}
+  .result__off{margin-top:.6em;font-size:1.15rem;font-weight:600;letter-spacing:.2em;color:var(--gold)}
+  .result__off:empty{display:none}
+  .result__where{font-size:1.05rem;font-weight:500;margin-top:.15rem}
+  .result__rules{margin-top:.35rem;font-size:.78rem;color:var(--muted)}
+  .sent{margin-top:1.2rem;padding:1rem;background:rgba(255,255,255,.75);border:1px solid var(--line);text-align:left}
+  .sent p{font-size:.8rem;color:var(--muted)}
+  .sent ul{list-style:none;margin-top:.6rem;display:grid;gap:.5rem}
+  .sent li{display:flex;align-items:center;gap:.6rem;font-size:.9rem;font-weight:500;word-break:break-all}
+  .sent svg{flex:none;width:1.1rem;height:1.1rem;color:var(--gold)}
+  .confirm{margin-top:1rem;font-size:.9rem;line-height:1.5}
+  .confirm b{font-weight:600}
+  .hint{margin-top:.35rem;font-size:.75rem;color:var(--muted)}
+  .result .btn{margin-top:1.25rem}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;z-index:60;pointer-events:none}
+
+  /* ——— Telas baixas (celular, tablet deitado): o script liga .compacto ——— */
+  .compacto .header{padding:.6rem 1rem .5rem}
+  .compacto .header__logo{height:1.5rem}
+  .compacto .header__nome{font-size:1.15rem;line-height:1.5rem}
+  .compacto .header__tag{margin-top:.3rem}
+  .compacto .stage{padding:.8rem .75rem .6rem}
+  .compacto .eyebrow,.compacto .card__eyebrow{display:none}
+  .compacto .stage__title{margin-top:0;font-size:2rem}
+  .compacto .stage__sub{margin-top:.25rem;font-size:.85rem}
+  .compacto .stage__head{top:.8rem}
+  .compacto .card{padding:1.1rem 1.1rem 1rem}
+  .compacto .card__title{margin-top:0;font-size:1.9rem}
+  .compacto .card__lead{margin-top:.6rem;padding-top:.6rem;font-size:.8rem}
+  .compacto .fields{gap:.6rem;margin-top:.75rem}
+  .compacto .field input{height:2.7rem}
+  .compacto .btn{height:3rem}
+  .compacto .powered{margin-top:.7rem}
+
+  @media (prefers-reduced-motion:reduce){
+    .adbar__track{animation-duration:90s}
+    .is-ready .hub{animation:none}
+    .wheel{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="adbar" id="adbar" aria-hidden="true"><div class="adbar__track" id="adbarTrack"></div></div>
+
+<header class="header">
+  <img class="header__logo" id="logo" alt="" hidden>
+  <span class="header__nome" id="logoTexto" hidden></span>
+  <p class="header__tag">Edição especial · <b id="headerEvento"></b></p>
+</header>
+
+<main class="stage" id="stage" data-state="form" aria-labelledby="cardTitle">
+  <div class="stage__bg" id="fundo" aria-hidden="true"></div>
+  <div class="stage__veil" aria-hidden="true"></div>
+
+  <div class="stage__head">
+    <p class="eyebrow" id="stageEyebrow"></p>
+    <h2 class="stage__title" id="stageTitle"></h2>
+    <p class="stage__sub" id="stageSub"></p>
+  </div>
+
+  <div class="play" id="play">
+    <div class="wheel" id="wheel">
+      <svg class="wheel__pointer" id="pointer" viewBox="0 0 100 124" aria-hidden="true">
+        <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--gold-3)"/><stop offset="1" style="stop-color:var(--gold)"/></linearGradient></defs>
+        <path d="M50 122 C38 96 8 70 8 44 A42 42 0 0 1 92 44 C92 70 62 96 50 122 Z" style="fill:var(--ink)" stroke="url(#pg)" stroke-width="5"/>
+        <circle cx="50" cy="44" r="14" fill="url(#pg)"/>
+      </svg>
+      <svg class="wheel__svg" id="wheelSvg" viewBox="0 0 1000 1000" role="img" aria-label="Roleta de prêmios"></svg>
+      <button class="hub" id="spinBtn" type="button" disabled aria-label="Girar a roleta"><span>GIRAR<small id="hubHint">CADASTRE-SE</small></span></button>
+    </div>
+
+    <form class="card glass" id="leadForm" novalidate autocomplete="off">
+      <div class="card__head">
+        <p class="card__eyebrow" id="cardEyebrow"></p>
+        <h1 class="card__title" id="cardTitle">Gire e ganhe</h1>
+        <p class="card__sub" id="cardSub"></p>
+      </div>
+      <p class="card__lead" id="cardLead"></p>
+
+      <div class="fields">
+        <div class="field" data-field="nome">
+          <label for="nome">Nome completo</label>
+          <input id="nome" name="nome" type="text" autocomplete="off" autocapitalize="words" placeholder="Como você se chama?" required>
+          <p class="field__err" aria-live="polite"></p>
+        </div>
+        <div class="field" data-field="email">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="voce@email.com" required>
+          <p class="suggest" id="emailSuggest" hidden></p>
+          <p class="field__err" aria-live="polite"></p>
+        </div>
+        <div class="row2">
+          <div class="field" data-field="telefone">
+            <label for="telefone">WhatsApp</label>
+            <input id="telefone" name="telefone" type="tel" inputmode="numeric" autocomplete="off" placeholder="(11) 98765-4321" maxlength="15" required>
+            <p class="field__err" aria-live="polite"></p>
+          </div>
+          <div class="field" data-field="nascimento">
+            <label for="nascimento">Data de nascimento</label>
+            <input id="nascimento" name="nascimento" type="text" inputmode="numeric" autocomplete="off" placeholder="DD/MM/AAAA" maxlength="10" required>
+            <p class="field__err" aria-live="polite"></p>
+          </div>
+        </div>
+        <p class="form-err" id="formErr" aria-live="assertive"></p>
+        <button class="btn" type="submit">
+          Girar roleta
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4.5h-4.5"/></svg>
+        </button>
+      </div>
+      <div class="powered" data-powered>Powered by <svg viewBox="0 0 252.91 77.57" fill="none" role="img" aria-label="Revi"><path d="M78.91,7.97c-.1,0-.6-.1-1.4-.2-3-.6-6.2-.7-9.5-.3-2.8.3-5.2.8-7.3,1.5-3.1.9-5.9,2-8.2,3.3-2.4,1.3-4.7,2.6-6.9,4.2-1.1.8-2.2,1.6-3.3,2.5-.5.4-1,.8-1.6,1.3-.4.3-1,.8-1.8,1.5-1.1.9-2.1,1.7-2.8,2.3-1.6,1.3-3.5,2.7-5.7,4.2-2,1.4-4.2,2.6-6.4,3.5-3,1.3-6,1.9-9,2-1.2,0-2.6-.1-4.1-.3-2.4-.4-4.4-1.3-6.1-2.5-.8-.6-1.5-1.3-2.2-2.3v-.1c.1-.2.1-.5.3-.8,1.3-2.9,3-5.5,5-7.9,1.8-2.2,4.1-4.4,6.7-6.6,3.1-2.6,6.6-4.8,10.4-6.7,3.7-1.9,7.6-3.3,11.5-4.4,4-1.1,8.1-1.8,12.2-2.1,1.9-.1,4-.1,6.3.1,1.9.2,4,.4,6.2.8,2.8.5,5.5,1.2,8.1,2.1,2.7,1,5.1,2.1,7.2,3.4.5.3,1,.6,1.3.8.5.3.9.5,1.1.7Z" fill="#56BBEE"></path><path d="M90.51,27.57s-.1,0,0,0q-.1,0,0,0c-.4-.5-.7-1-1-1.4-.4-.4-.8-.9-1.2-1.2-1.4-1.1-2.9-1.8-4.7-2.1-1.6-.3-3.4-.3-5.2.1-2.6.5-5.4,1.6-8.1,3.3-2.4,1.4-4.6,3-6.6,4.7-1.6,1.4-3.2,2.9-4.9,4.5-1.4,1.3-2.9,2.9-4.7,4.8-1.5,1.6-3.8,3.9-6.8,6.9-1.7,1.7-3.3,3.2-4.9,4.5-1.8,1.5-3.6,2.8-5.4,3.9-4.7,2.8-9.7,4.4-15.2,4.6-1.9.1-3.7-.1-5.5-.4-1.9-.4-3.6-1-5.2-1.9-4.4-2.4-7.5-5.9-9.4-10.6-2-5.2-2.3-10.4-.6-15.8h.1c1.6,2.1,3.6,3.6,6.2,4.4,2.4.8,4.9,1.1,7.5,1,2.4-.1,4.9-.5,7.4-1.2,1.8-.6,3.5-1.3,5.3-2.2,1.6-.8,3.2-1.8,4.9-2.9,1.4-1,3-2.1,4.6-3.4.7-.5,1.4-1.1,2.3-1.8.6-.5,1.3-1.1,2.2-1.9.6-.5,2.1-1.7,4.4-3.5,4.6-3.5,9.6-6.1,15.1-7.7,3.1-.9,6.1-1.4,9-1.6,3.1-.2,6.1.1,9,.8.9.2,1.9.6,2.9,1,1.4.7,2.7,1.5,3.8,2.6,1,1,1.9,2.3,2.6,3.7.7,1.3,1.2,2.8,1.5,4.3.5,1.4.6,2.9.6,4.5Z" fill="#0A40C6"></path><path d="M85.21,76.27c-2.7-1.6-5-3.4-7.3-5.5-2.1-1.9-4-4.1-5.9-6.4-1.3-1.6-5.6-8.1-6.6-9.9h-.1c-2.5,1.8-13.4,7.2-16.5,8.4-1.4.6-2.9,1.1-4.4,1.6-1.5.4-3,.8-4.5,1.1-5.4,1-10.8.9-16.2-.3-1.9-.4-3.8-1.1-5.7-2h0c1.1.1,2,.2,2.9.3,1.1.1,2.3,0,3.6-.1,1.1-.1,2.3-.3,3.6-.6,4.1-.9,8-2.5,11.5-4.9,2.1-1.4,4-2.9,5.8-4.5,1.2-1,2.4-2.2,3.7-3.5,1-1,2.3-2.4,3.9-4,1.4-1.5,2.8-3,4.2-4.4,1.5-1.5,2.8-2.9,4-4,1.2-1.2,2.3-2.2,3.3-3.1,1.2-1,2.4-2,3.5-2.8,1.3-.9,2.5-1.7,3.8-2.4,1.3-.8,2.7-1.4,4.1-1.9,1-.4,1.9-.7,2.8-.9,1-.2,1.9-.3,2.7-.3.9,0,1.8.1,2.7.3.9.2,1.8.6,2.7,1.1.5.3,1,.7,1.5,1.3.2.3.4.5.6.8.2.3.4.6.5.9.9,1.7,1.2,3.6,1,5.6-.1.9-.3,1.9-.5,2.9-.5,1.8-.9,3.3-1.4,4.6-1.4,3.6-2.2,5.9-2.6,7-.9,2.4-1.6,5-2,7.6-.5,2.7-.6,5.5-.2,8.3.4,3.6,1.3,6.8,2.6,9.9.2.4.5,1.1.5,1.1Z" fill="#32C700"></path><g fill="#0940C6"><path d="M135.81,19.77h-1.9c-12.2.7-21.9,10.7-21.9,22.9v22.7h11.4v-22.6c0-7.1,5.7-13.2,12.8-13.5h1.8v-9.3c-.7-.1-1.5-.2-2.2-.2Z"></path><path d="M164.31,19.07c12.7,0,21,7.1,21,22.2,0,3.2-1.5,4.8-4.9,4.8h-26.5c.6,7,5.4,10.2,12.4,10.2,3.8,0,7.5-.6,12.5-2.1l4.4-1.4,1.5,8.6-4.4,1.4c-5.8,1.8-10,2.6-14.8,2.6-13.7,0-22.8-7.7-22.8-23.1-.1-16,9.9-23.2,21.6-23.2ZM163.91,27.37c-6,0-9.7,4.2-10.1,11h20.2c.1-6.1-3-11-10.1-11Z"></path><path d="M220.01,60.17c-1,3.2-4.4,5.3-8.4,5.3-4.2,0-7.1-1.8-8.3-5.3l-13.8-41h8.1c2.6,0,4.9,1.7,5.6,4.2l8.7,29.1,9.1-29.2c.8-2.4,3-4.1,5.6-4.1h8l-14.6,41Z"></path><path d="M246.61,25.07c3.5,0,6.3-2.8,6.3-6.2s-2.8-6.2-6.3-6.2-6.3,2.8-6.3,6.2c-.1,3.4,2.8,6.2,6.3,6.2Z"></path><path d="M240.91,27.57v37.9h11.4V27.57c-1.6,1-3.6,1.7-5.7,1.7-2.1,0-4.1-.6-5.7-1.7Z"></path></g></svg></div>
+    </form>
+  </div>
+
+</main>
+
+<p class="sync" id="sync" aria-live="polite"></p>
+
+<div class="modal" id="resultModal" role="dialog" aria-modal="true" aria-labelledby="resultHello" hidden>
+  <div class="result glass">
+    <p class="result__hello" id="resultHello">Parabéns!</p>
+    <p class="result__won">Você ganhou</p>
+    <div class="result__prize"><span class="result__value" id="resultValue"></span><span class="result__off" id="resultOff"></span></div>
+    <p class="result__where" id="resultWhere"></p>
+    <p class="result__rules" id="resultRules"></p>
+    <div class="sent">
+      <p id="resultSentText"></p>
+      <ul>
+        <li id="resultEmailItem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="m3.5 6 8.5 7 8.5-7"/></svg><span id="resultEmail"></span></li>
+        <li id="resultPhoneItem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.6a8.5 8.5 0 0 1-12.6 7.4L3.5 20.5l1.5-4.3A8.5 8.5 0 1 1 20.5 11.6Z"/><path d="M9 8.6c0 3.3 3.1 6.4 6.4 6.4l1-1.6-2-1-1 .8a4.6 4.6 0 0 1-2.6-2.6l.8-1-1-2Z"/></svg><span id="resultPhone"></span></li>
+      </ul>
+    </div>
+    <p class="confirm" id="resultConfirm"></p>
+    <p class="hint" id="resultHint"></p>
+    <button class="btn btn--ghost" type="button" id="againBtn">Nova participação</button>
+    <div class="powered" data-powered>Powered by <svg viewBox="0 0 252.91 77.57" fill="none" role="img" aria-label="Revi"><path d="M78.91,7.97c-.1,0-.6-.1-1.4-.2-3-.6-6.2-.7-9.5-.3-2.8.3-5.2.8-7.3,1.5-3.1.9-5.9,2-8.2,3.3-2.4,1.3-4.7,2.6-6.9,4.2-1.1.8-2.2,1.6-3.3,2.5-.5.4-1,.8-1.6,1.3-.4.3-1,.8-1.8,1.5-1.1.9-2.1,1.7-2.8,2.3-1.6,1.3-3.5,2.7-5.7,4.2-2,1.4-4.2,2.6-6.4,3.5-3,1.3-6,1.9-9,2-1.2,0-2.6-.1-4.1-.3-2.4-.4-4.4-1.3-6.1-2.5-.8-.6-1.5-1.3-2.2-2.3v-.1c.1-.2.1-.5.3-.8,1.3-2.9,3-5.5,5-7.9,1.8-2.2,4.1-4.4,6.7-6.6,3.1-2.6,6.6-4.8,10.4-6.7,3.7-1.9,7.6-3.3,11.5-4.4,4-1.1,8.1-1.8,12.2-2.1,1.9-.1,4-.1,6.3.1,1.9.2,4,.4,6.2.8,2.8.5,5.5,1.2,8.1,2.1,2.7,1,5.1,2.1,7.2,3.4.5.3,1,.6,1.3.8.5.3.9.5,1.1.7Z" fill="#56BBEE"></path><path d="M90.51,27.57s-.1,0,0,0q-.1,0,0,0c-.4-.5-.7-1-1-1.4-.4-.4-.8-.9-1.2-1.2-1.4-1.1-2.9-1.8-4.7-2.1-1.6-.3-3.4-.3-5.2.1-2.6.5-5.4,1.6-8.1,3.3-2.4,1.4-4.6,3-6.6,4.7-1.6,1.4-3.2,2.9-4.9,4.5-1.4,1.3-2.9,2.9-4.7,4.8-1.5,1.6-3.8,3.9-6.8,6.9-1.7,1.7-3.3,3.2-4.9,4.5-1.8,1.5-3.6,2.8-5.4,3.9-4.7,2.8-9.7,4.4-15.2,4.6-1.9.1-3.7-.1-5.5-.4-1.9-.4-3.6-1-5.2-1.9-4.4-2.4-7.5-5.9-9.4-10.6-2-5.2-2.3-10.4-.6-15.8h.1c1.6,2.1,3.6,3.6,6.2,4.4,2.4.8,4.9,1.1,7.5,1,2.4-.1,4.9-.5,7.4-1.2,1.8-.6,3.5-1.3,5.3-2.2,1.6-.8,3.2-1.8,4.9-2.9,1.4-1,3-2.1,4.6-3.4.7-.5,1.4-1.1,2.3-1.8.6-.5,1.3-1.1,2.2-1.9.6-.5,2.1-1.7,4.4-3.5,4.6-3.5,9.6-6.1,15.1-7.7,3.1-.9,6.1-1.4,9-1.6,3.1-.2,6.1.1,9,.8.9.2,1.9.6,2.9,1,1.4.7,2.7,1.5,3.8,2.6,1,1,1.9,2.3,2.6,3.7.7,1.3,1.2,2.8,1.5,4.3.5,1.4.6,2.9.6,4.5Z" fill="#0A40C6"></path><path d="M85.21,76.27c-2.7-1.6-5-3.4-7.3-5.5-2.1-1.9-4-4.1-5.9-6.4-1.3-1.6-5.6-8.1-6.6-9.9h-.1c-2.5,1.8-13.4,7.2-16.5,8.4-1.4.6-2.9,1.1-4.4,1.6-1.5.4-3,.8-4.5,1.1-5.4,1-10.8.9-16.2-.3-1.9-.4-3.8-1.1-5.7-2h0c1.1.1,2,.2,2.9.3,1.1.1,2.3,0,3.6-.1,1.1-.1,2.3-.3,3.6-.6,4.1-.9,8-2.5,11.5-4.9,2.1-1.4,4-2.9,5.8-4.5,1.2-1,2.4-2.2,3.7-3.5,1-1,2.3-2.4,3.9-4,1.4-1.5,2.8-3,4.2-4.4,1.5-1.5,2.8-2.9,4-4,1.2-1.2,2.3-2.2,3.3-3.1,1.2-1,2.4-2,3.5-2.8,1.3-.9,2.5-1.7,3.8-2.4,1.3-.8,2.7-1.4,4.1-1.9,1-.4,1.9-.7,2.8-.9,1-.2,1.9-.3,2.7-.3.9,0,1.8.1,2.7.3.9.2,1.8.6,2.7,1.1.5.3,1,.7,1.5,1.3.2.3.4.5.6.8.2.3.4.6.5.9.9,1.7,1.2,3.6,1,5.6-.1.9-.3,1.9-.5,2.9-.5,1.8-.9,3.3-1.4,4.6-1.4,3.6-2.2,5.9-2.6,7-.9,2.4-1.6,5-2,7.6-.5,2.7-.6,5.5-.2,8.3.4,3.6,1.3,6.8,2.6,9.9.2.4.5,1.1.5,1.1Z" fill="#32C700"></path><g fill="#0940C6"><path d="M135.81,19.77h-1.9c-12.2.7-21.9,10.7-21.9,22.9v22.7h11.4v-22.6c0-7.1,5.7-13.2,12.8-13.5h1.8v-9.3c-.7-.1-1.5-.2-2.2-.2Z"></path><path d="M164.31,19.07c12.7,0,21,7.1,21,22.2,0,3.2-1.5,4.8-4.9,4.8h-26.5c.6,7,5.4,10.2,12.4,10.2,3.8,0,7.5-.6,12.5-2.1l4.4-1.4,1.5,8.6-4.4,1.4c-5.8,1.8-10,2.6-14.8,2.6-13.7,0-22.8-7.7-22.8-23.1-.1-16,9.9-23.2,21.6-23.2ZM163.91,27.37c-6,0-9.7,4.2-10.1,11h20.2c.1-6.1-3-11-10.1-11Z"></path><path d="M220.01,60.17c-1,3.2-4.4,5.3-8.4,5.3-4.2,0-7.1-1.8-8.3-5.3l-13.8-41h8.1c2.6,0,4.9,1.7,5.6,4.2l8.7,29.1,9.1-29.2c.8-2.4,3-4.1,5.6-4.1h8l-14.6,41Z"></path><path d="M246.61,25.07c3.5,0,6.3-2.8,6.3-6.2s-2.8-6.2-6.3-6.2-6.3,2.8-6.3,6.2c-.1,3.4,2.8,6.2,6.3,6.2Z"></path><path d="M240.91,27.57v37.9h11.4V27.57c-1.6,1-3.6,1.7-5.7,1.7-2.1,0-4.1-.6-5.7-1.7Z"></path></g></svg></div>
+  </div>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO — tudo que muda por marca e por evento fica aqui
+   ============================================================ */
+const CONFIG = {
+  marca: {
+    nome: 'Sua Marca',
+    logo: '',      // caminho (assets/logo.png) ou URL do logo horizontal. Vazio: mostra o nome em texto
+    favicon: '',   // caminho ou URL do favicon da marca
+    fundo: [],     // até 3 fotos da marca atrás da roleta (assets/foto-1.webp...). Vazio: degradê com as cores do TEMA
+    beneficios: ['Frete grátis acima de R$299', 'Parcele em até 6x sem juros', '5% OFF no Pix'], // letreiro do topo; [] esconde
+  },
+  evento: 'Nome do Evento 2026',
+  slug: 'evento-26',          // identifica a roleta no navegador (lista de participantes) e no nome do CSV
+  tag: 'ROLETA-EVENTO-26',    // a mesma tag automática configurada no webhook da Revi
+  canal: 'email',             // 'email' ou 'whatsapp': por onde a Revi manda o cupom (muda os textos da tela)
+  prazoEntrega: 'em alguns minutos', // quando o cupom chega (depende do horário da automação na Revi)
+  validadeCupons: 'Válido até 31/12/2026 às 23h59',
+  poweredByRevi: true,
+  // A página só chama a função api/cadastro.mjs, que acrescenta o x-revi-secret.
+  // URL e secret do webhook ficam no .env (computador) e nas variáveis de ambiente da Vercel, nunca aqui.
+  webhooks: {
+    cadastro: '/api/cadastro', // Revi › Automações › Receber webhooks › tipo "Atualização de dados de cliente"
+  },
+  resetAposResultadoSeg: 120, // volta sozinha para o cadastro (modo totem)
+  resetSemGiroSeg: 180,       // cadastrou e não girou: volta para o cadastro
+  resetCadastroOciosoSeg: 90, // começou a preencher e abandonou: limpa o formulário
+};
+
+// Cores e fonte da marca. A fonte também precisa ser trocada no <link> do Google Fonts, no <head>.
+const TEMA = {
+  fonte: 'Poppins',
+  escuro: '#111111',       // textos, botões, aro da roleta, fatias "escuro"
+  escuro2: '#2b2b2b',      // textos secundários
+  suave: '#6b6b6b',        // legendas
+  claro: '#f1efec',        // fatias "claro" e miolo
+  linha: '#e3e0dc',        // bordas dos campos
+  acento: '#c99a2e',       // cor de destaque (divisórias, "OFF", fatia "destaque")
+  acentoClaro: '#e9c96b',  // brilho do destaque
+  acentoEscuro: '#9c7419', // destaque sobre fundo claro (títulos pequenos, ícones)
+};
+
+// Ordem = posição na roleta (sentido horário, a partir do topo). Pesos somam 100.
+// estilo: 'destaque' (maior prêmio), 'escuro' ou 'claro'. sufixo: o que aparece depois do valor ('OFF' se omitido; '' para brinde).
+// Os cupons precisam existir na plataforma da loja (Nuvemshop, Shopify, VTEX...) antes do evento.
+const PREMIOS = [
+  { id:'r100-site', valor:'R$100', l1:'Site todo',  onde:'no site todo',    cupom:'ROLETA100', peso:3,  estilo:'destaque', regra:'Compra mínima de R$500' },
+  { id:'p5-site',   valor:'5%',    l1:'Site todo',  onde:'no site todo',    cupom:'ROLETA5',   peso:30, estilo:'escuro',   regra:'Sem valor mínimo' },
+  { id:'r20-site',  valor:'R$20',  l1:'Site todo',  onde:'no site todo',    cupom:'ROLETA20',  peso:25, estilo:'claro',    regra:'Compra mínima de R$150' },
+  { id:'p10-site',  valor:'10%',   l1:'Site todo',  onde:'no site todo',    cupom:'ROLETA10',  peso:20, estilo:'escuro',   regra:'Compra mínima de R$200' },
+  { id:'frete',     valor:'Frete', l1:'grátis', sufixo:'', onde:'grátis em todo o site', cupom:'ROLETAFRETE', peso:12, estilo:'claro', regra:'Sem valor mínimo' },
+  { id:'p15-novid', valor:'15%',   l1:'Novidades',  onde:'nas Novidades',   cupom:'ROLETA15',  peso:7,  estilo:'escuro',   regra:'Compra mínima de R$300' },
+  { id:'r50-site',  valor:'R$50',  l1:'Site todo',  onde:'no site todo',    cupom:'ROLETA50',  peso:3,  estilo:'claro',    regra:'Compra mínima de R$350' },
+];
+
+/* ============================================================ */
+const $ = (s) => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+const MODO_TESTE = params.has('teste');
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const KEYS = { participantes:`roleta_${CONFIG.slug}_participantes`, log:`roleta_${CONFIG.slug}_log`, falhas:`roleta_${CONFIG.slug}_falhas` };
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const sufixo = (p) => p.sufixo ?? 'OFF';
+const PORCANAL = CONFIG.canal === 'whatsapp'
+  ? { onde:'no seu WhatsApp', nome:'WhatsApp', lead:'<b>WhatsApp</b>', abrir:'Abra o seu WhatsApp', dica:'Salve o nosso número para não perder a mensagem.' }
+  : { onde:'no seu e-mail',   nome:'e-mail',   lead:'<b>e-mail</b>',   abrir:'Abra o seu e-mail',   dica:'Não encontrou o e-mail? Confira as pastas de spam e promoções.' };
+
+/* ——— Marca: tema, logo, fundo, letreiro e textos ——— */
+(function aplicarMarca(){
+  const r = document.documentElement.style;
+  const vars = { '--ink':TEMA.escuro, '--ink-2':TEMA.escuro2, '--muted':TEMA.suave, '--sand':TEMA.claro, '--line':TEMA.linha,
+                 '--gold':TEMA.acentoEscuro, '--gold-2':TEMA.acento, '--gold-3':TEMA.acentoClaro,
+                 '--font':`'${TEMA.fonte}', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif` };
+  for (const k in vars) r.setProperty(k, vars[k]);
+  $('meta[name="theme-color"]').content = TEMA.escuro;
+  document.title = `Roleta ${CONFIG.marca.nome} · ${CONFIG.evento}`;
+  if (CONFIG.marca.favicon) $('#favicon').href = CONFIG.marca.favicon;
+
+  if (CONFIG.marca.logo) { const l = $('#logo'); l.src = CONFIG.marca.logo; l.alt = CONFIG.marca.nome; l.hidden = false; }
+  else { const t = $('#logoTexto'); t.textContent = CONFIG.marca.nome; t.hidden = false; }
+  $('#headerEvento').textContent = CONFIG.evento;
+
+  const fundo = $('#fundo'); const fotos = CONFIG.marca.fundo.slice(0, 3);
+  if (fotos.length) {
+    fundo.style.setProperty('--fotos', fotos.length);
+    fotos.forEach((src) => { const d = document.createElement('div'); const img = new Image(); img.src = src; img.alt = ''; d.append(img); fundo.append(d); });
+  } else fundo.classList.add('is-gradiente');
+
+  const itens = [`Edição especial ${CONFIG.evento}`, `Gire a roleta e ganhe até ${maiorPremio().valor}`, ...CONFIG.marca.beneficios];
+  if (CONFIG.marca.beneficios.length) {
+    const grupo = () => { const g = document.createElement('div'); g.className = 'adbar__group'; itens.forEach((t) => { const s = document.createElement('span'); s.textContent = t; g.append(s); }); return g; };
+    $('#adbarTrack').append(grupo(), grupo());
+  } else $('#adbar').hidden = true;
+
+  if (!CONFIG.poweredByRevi) document.querySelectorAll('[data-powered]').forEach((n) => { n.hidden = true; });
+
+  $('#cardEyebrow').textContent = `Roleta ${CONFIG.marca.nome}`;
+  $('#cardSub').innerHTML = textoSub();
+  $('#cardLead').innerHTML = `Cadastre-se para girar. Seu cupom chega por ${PORCANAL.lead} ${CONFIG.prazoEntrega}. Uma participação por pessoa.`;
+  $('#resultSentText').textContent = `Vamos enviar o código do cupom ${PORCANAL.onde}:`;
+  $('#resultEmailItem').hidden = CONFIG.canal === 'whatsapp';
+  $('#resultPhoneItem').hidden = CONFIG.canal !== 'whatsapp';
+  $('#resultConfirm').innerHTML = `<b>${PORCANAL.abrir}</b>: o cupom chega ${CONFIG.prazoEntrega}.`;
+  $('#resultHint').textContent = PORCANAL.dica;
+})();
+function maiorPremio(){ return PREMIOS.find((p) => p.estilo === 'destaque') || PREMIOS[0]; }
+function textoSub(){ const m = maiorPremio(); return `Prêmios de até <b>${m.valor}${sufixo(m) ? ' ' + sufixo(m) : ''}</b> para usar no site`; }
+
+/* ——— Desenho da roleta ——— */
+const SEG = 360 / PREMIOS.length;
+const svgNS = 'http://www.w3.org/2000/svg';
+const wheelSvg = $('#wheelSvg');
+
+function polar(r, deg){ const a = (deg - 90) * Math.PI / 180; return [500 + r * Math.cos(a), 500 + r * Math.sin(a)]; }
+function el(tag, attrs = {}, parent){ const n = document.createElementNS(svgNS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; }
+
+function desenharRoleta(){
+  const defs = el('defs', {}, wheelSvg);
+  const gg = el('linearGradient', { id:'segDestaque', x1:'0', y1:'0', x2:'0', y2:'1' }, defs);
+  el('stop', { offset:'0', 'stop-color':TEMA.acentoClaro }, gg); el('stop', { offset:'.55', 'stop-color':TEMA.acento }, gg); el('stop', { offset:'1', 'stop-color':TEMA.acentoEscuro }, gg);
+  const shade = el('radialGradient', { id:'shade', cx:'.5', cy:'.5', r:'.5' }, defs);
+  el('stop', { offset:'.55', 'stop-color':'#000', 'stop-opacity':'0' }, shade); el('stop', { offset:'1', 'stop-color':'#000', 'stop-opacity':'.16' }, shade);
+
+  const R = 468;
+  const cores = { destaque:{ bg:'url(#segDestaque)', txt:TEMA.escuro, off:TEMA.escuro, sub:TEMA.escuro2 },
+                  escuro:{ bg:TEMA.escuro,           txt:'#fff',      off:TEMA.acento, sub:'#d9d9d9' },
+                  claro:{ bg:TEMA.claro,             txt:TEMA.escuro, off:TEMA.acentoEscuro, sub:TEMA.suave } };
+
+  PREMIOS.forEach((p, i) => {
+    const c = cores[p.estilo] || cores.claro;
+    const a0 = i * SEG - SEG / 2, a1 = i * SEG + SEG / 2;
+    const [x0, y0] = polar(R, a0), [x1, y1] = polar(R, a1);
+    el('path', { d:`M500 500 L${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1} Z`, fill:c.bg }, wheelSvg);
+
+    const g = el('g', { transform:`rotate(${i * SEG} 500 500)` }, wheelSvg);
+    const big = p.valor.length >= 5 ? 66 : 76;
+    el('text', { x:500, y:152, 'font-size':big, 'font-weight':700, fill:c.txt, 'letter-spacing':'-1' }, g).textContent = p.valor;
+    if (sufixo(p)) el('text', { x:500, y:198, 'font-size':28, 'font-weight':600, fill:c.off, 'letter-spacing':'7' }, g).textContent = sufixo(p);
+    el('text', { x:500, y:p.l2 ? 246 : 256, 'font-size':25, 'font-weight':500, fill:c.sub }, g).textContent = p.l1;
+    if (p.l2) el('text', { x:500, y:278, 'font-size':25, 'font-weight':500, fill:c.sub }, g).textContent = p.l2;
+    if (p.estilo === 'destaque') el('text', { x:500, y:84, 'font-size':17, 'font-weight':600, fill:TEMA.escuro, 'letter-spacing':'5' }, g).textContent = 'MAIOR PRÊMIO';
+  });
+
+  // divisórias
+  PREMIOS.forEach((_, i) => {
+    const [xa, ya] = polar(120, i * SEG - SEG / 2), [xb, yb] = polar(R, i * SEG - SEG / 2);
+    el('line', { x1:xa, y1:ya, x2:xb, y2:yb, stroke:TEMA.acento, 'stroke-width':2.5, 'stroke-opacity':.9 }, wheelSvg);
+  });
+  el('circle', { cx:500, cy:500, r:R, fill:'url(#shade)' }, wheelSvg);
+
+  // aro com luzes
+  el('circle', { cx:500, cy:500, r:484, fill:'none', stroke:TEMA.escuro, 'stroke-width':34 }, wheelSvg);
+  el('circle', { cx:500, cy:500, r:468, fill:'none', stroke:TEMA.acento, 'stroke-width':3 }, wheelSvg);
+  el('circle', { cx:500, cy:500, r:499, fill:'none', stroke:TEMA.acento, 'stroke-width':2 }, wheelSvg);
+  const LUZES = PREMIOS.length * 4;
+  for (let k = 0; k < LUZES; k++) {
+    const [x, y] = polar(484, k * 360 / LUZES);
+    el('circle', { cx:x, cy:y, r:5.5, fill: k % 2 ? '#fff' : TEMA.acentoClaro, class:'dot--blink' + (k % 2 ? ' alt' : '') }, wheelSvg);
+  }
+  // miolo (o botão HTML fica por cima)
+  el('circle', { cx:500, cy:500, r:124, fill:TEMA.escuro }, wheelSvg);
+}
+desenharRoleta();
+
+/* ——— Animação ——— */
+const pointer = $('#pointer');
+let angle = 0;              // começa com o primeiro prêmio sob o ponteiro
+let mode = 'idle';           // idle | parked | spin
+let spin = null, lastT = performance.now(), lastIdx = null, lastTick = 0;
+const IDLE_SPEED = REDUCED ? 0 : 0.0075; // graus por ms
+const easeOut = (t) => 1 - Math.pow(1 - t, 4);
+
+function frame(t){
+  const dt = Math.min(64, t - lastT); lastT = t;
+  if (mode === 'idle') angle += dt * IDLE_SPEED;
+  else if (mode === 'spin') {
+    const p = Math.min(1, (t - spin.t0) / spin.dur);
+    angle = spin.from + (spin.to - spin.from) * easeOut(p);
+    if (p >= 1) { mode = 'parked'; const cb = spin.done; spin = null; cb(); }
+  }
+  wheelSvg.style.transform = `rotate(${angle}deg)`;
+  const idx = Math.floor((((angle % 360) + 360) % 360 + SEG / 2) / SEG);
+  if (idx !== lastIdx) {
+    lastIdx = idx;
+    if (mode === 'spin' && t - lastTick > 45) { lastTick = t; pointer.classList.remove('tick'); void pointer.offsetWidth; pointer.classList.add('tick'); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// fatia sob o ponteiro (topo): a fatia i está em i*SEG + angle; fica sob o ponteiro quando isso ≡ 0
+function indiceSobPonteiro(){ return Math.round((((-angle % 360) + 360) % 360) / SEG) % PREMIOS.length; }
+
+// confere a tabela de prêmios ao abrir a página (pesos somam 100, cupons preenchidos e distintos)
+(function validarPremios(){
+  const erros = [];
+  const soma = PREMIOS.reduce((s, p) => s + p.peso, 0);
+  if (soma !== 100) erros.push(`pesos somam ${soma}, não 100`);
+  PREMIOS.forEach((p) => { if (!(p.peso > 0)) erros.push(`${p.id}: peso inválido`); if (!p.cupom) erros.push(`${p.id}: sem cupom`); });
+  const cupons = PREMIOS.map((p) => p.cupom); if (new Set(cupons).size !== cupons.length) erros.push('cupom repetido');
+  if (erros.length) { console.error('[roleta] configuração de prêmios inválida:', erros); window.__errosPremios = erros; }
+})();
+
+function sortear(){
+  const total = PREMIOS.reduce((s, p) => s + p.peso, 0);
+  const r = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 * total;
+  let acc = 0;
+  for (let i = 0; i < PREMIOS.length; i++) { acc += PREMIOS[i].peso; if (r < acc) return i; }
+  return PREMIOS.length - 1;
+}
+
+function girarAte(i){
+  return new Promise((resolve) => {
+    const jitter = (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 - 0.5) * SEG * 0.7;
+    const targetMod = (((-i * SEG + jitter) % 360) + 360) % 360;
+    const curMod = ((angle % 360) + 360) % 360;
+    const delta = (targetMod - curMod + 360) % 360;
+    const voltas = REDUCED ? 2 : 7;
+    spin = { from:angle, to:angle + voltas * 360 + delta, t0:performance.now(), dur:REDUCED ? 2400 : 6800, done:resolve };
+    mode = 'spin';
+  });
+}
+
+/* ——— Formulário ——— */
+const form = $('#leadForm'), stage = $('#stage'), spinBtn = $('#spinBtn');
+const inputs = { nome:$('#nome'), email:$('#email'), telefone:$('#telefone'), nascimento:$('#nascimento') };
+let lead = null;
+
+function maskPhone(v){
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : '';
+  if (d.length <= 6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+}
+function maskDate(v){
+  const d = v.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0,2)}/${d.slice(2)}`;
+  return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+}
+inputs.telefone.addEventListener('input', (e) => { e.target.value = maskPhone(e.target.value); limparErro('telefone'); });
+inputs.nascimento.addEventListener('input', (e) => { e.target.value = maskDate(e.target.value); limparErro('nascimento'); });
+inputs.nome.addEventListener('input', () => limparErro('nome'));
+
+// sugestão de domínio para evitar e-mail digitado errado
+const DOMINIOS = ['gmail.com','hotmail.com','outlook.com','outlook.com.br','hotmail.com.br','yahoo.com.br','yahoo.com','icloud.com','live.com','msn.com','uol.com.br','bol.com.br','terra.com.br','globo.com','me.com'];
+function lev(a, b){
+  const m = a.length, n = b.length; const dp = Array.from({ length:m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    dp[i][j] = Math.min(dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return dp[m][n];
+}
+function sugerirEmail(email){
+  const [u, d] = email.split('@'); if (!u || !d || DOMINIOS.includes(d)) return null;
+  let best = null, bd = 3;
+  for (const x of DOMINIOS) { const k = lev(d, x); if (k < bd) { bd = k; best = x; } }
+  return best && bd <= 2 ? `${u}@${best}` : null;
+}
+function mostrarSugestao(){
+  const box = $('#emailSuggest'); const s = sugerirEmail(inputs.email.value.trim().toLowerCase());
+  if (!s) { box.hidden = true; box.textContent = ''; return; }
+  box.innerHTML = 'Você quis dizer <button type="button"></button>?';
+  const b = box.querySelector('button'); b.textContent = s;
+  b.onclick = () => { inputs.email.value = s; box.hidden = true; limparErro('email'); };
+  box.hidden = false;
+}
+inputs.email.addEventListener('input', () => { limparErro('email'); $('#emailSuggest').hidden = true; });
+inputs.email.addEventListener('blur', mostrarSugestao);
+
+function setErro(campo, msg){ const f = form.querySelector(`[data-field="${campo}"]`); f.classList.add('is-invalid'); f.querySelector('.field__err').textContent = msg; f.querySelector('input').setAttribute('aria-invalid', 'true'); }
+function limparErro(campo){ const f = form.querySelector(`[data-field="${campo}"]`); f.classList.remove('is-invalid'); f.querySelector('.field__err').textContent = ''; f.querySelector('input').removeAttribute('aria-invalid'); $('#formErr').textContent = ''; }
+
+function validar(){
+  let ok = true;
+  const nome = nomeProprio(inputs.nome.value);
+  if (nome.length < 3 || !/[a-zA-ZÀ-ÿ]/.test(nome)) { setErro('nome', 'Informe seu nome.'); ok = false; }
+
+  const email = inputs.email.value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) { setErro('email', 'Informe um e-mail válido.'); ok = false; }
+
+  const tel = inputs.telefone.value.replace(/\D/g, '');
+  if (tel.length !== 11 || tel[2] !== '9' || +tel.slice(0,2) < 11) { setErro('telefone', 'Informe um celular com DDD.'); ok = false; }
+
+  const m = inputs.nascimento.value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  let iso = null;
+  if (m) {
+    const [_, dd, mm, yy] = m; const dt = new Date(+yy, +mm - 1, +dd); const hoje = new Date();
+    const valida = dt.getFullYear() === +yy && dt.getMonth() === +mm - 1 && dt.getDate() === +dd;
+    if (valida && +yy >= 1920 && dt < hoje) iso = `${yy}-${mm}-${dd}`;
+  }
+  if (!iso) { setErro('nascimento', 'Use o formato DD/MM/AAAA.'); ok = false; }
+
+  if (ok && !MODO_TESTE) {
+    const ja = store.get(KEYS.participantes, []);
+    if (ja.includes(email) || ja.includes(tel)) { $('#formErr').textContent = 'Este e-mail ou WhatsApp já participou da roleta.'; ok = false; }
+  }
+  if (!ok) { const first = form.querySelector('.is-invalid input'); first && first.focus({ preventScroll:true }); return null; }
+  return { nome, email, telefone:tel, nascimentoIso:iso, nascimentoBr:inputs.nascimento.value };
+}
+
+const PARTICULAS = ['da','de','do','das','dos','e'];
+function nomeProprio(v){
+  return v.trim().replace(/\s+/g, ' ').toLowerCase().split(' ')
+    .map((p, i) => (i && PARTICULAS.includes(p)) ? p : p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+}
+function setHead(eyebrow, title, subHtml){ $('#stageEyebrow').textContent = eyebrow; $('#stageTitle').textContent = title; $('#stageSub').innerHTML = subHtml; }
+const primeiroNome = (n) => n.split(' ')[0];
+const cabecalhoInicial = () => setHead(`Roleta ${CONFIG.marca.nome}`, 'Gire e ganhe', textoSub());
+cabecalhoInicial();
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const dados = validar(); if (!dados) return;
+  lead = { ...dados, id:novoId() }; // nada é enviado aqui: a Revi só recebe no giro
+  clearTimeout(resetTimer);
+  resetTimer = setTimeout(reiniciar, CONFIG.resetSemGiroSeg * 1000);
+  form.classList.add('is-leaving');
+  setTimeout(() => {
+    form.hidden = true; form.style.translate = ''; deslocamento = 0;
+    stage.dataset.state = 'ready'; stage.classList.add('is-ready');
+    ajustarLayout(); // a roleta cresce e ocupa o palco
+    mode = 'parked';
+    spinBtn.disabled = false; $('#hubHint').textContent = 'TOQUE AQUI';
+    setHead('Tudo pronto', `Boa sorte, ${primeiroNome(lead.nome)}!`, 'Toque em <b>GIRAR</b> no centro da roleta');
+    spinBtn.focus({ preventScroll:true });
+  }, 340);
+});
+
+/* ——— Giro, envio e resultado ——— */
+let resetTimer = null;
+spinBtn.addEventListener('click', async () => {
+  if (!lead || mode === 'spin') return;
+  clearTimeout(resetTimer);
+  spinBtn.disabled = true; $('#hubHint').textContent = 'BOA SORTE';
+  stage.classList.remove('is-ready'); stage.classList.add('is-spinning'); stage.dataset.state = 'spinning';
+  setHead('Girando…', `Boa sorte, ${primeiroNome(lead.nome)}!`, `Seu cupom vai direto ${PORCANAL.onde.replace('no seu', 'para o seu')}`);
+
+  const i = sortear(); const premio = PREMIOS[i];
+  const payload = montarPayload(lead, premio);
+  registrarParticipacao(lead, payload);
+  // único momento em que a página chama a Revi: uma chamada, em paralelo com a animação, sem reenvio.
+  // O webhook grava os dados da cliente, a tag e premio.cupom no campo customizado do cupom.
+  enviarEtapa('cadastro', payload);
+
+  await girarAte(i);
+  if (indiceSobPonteiro() !== i) { // não deveria acontecer: a roleta sempre para dentro da fatia sorteada
+    console.error('[roleta] ponteiro fora da fatia sorteada — ajustando', { sorteado:i, ponteiro:indiceSobPonteiro(), angle });
+    angle -= (((i * SEG + angle) % 360) + 540) % 360 - 180;
+  }
+  mostrarResultado(lead, premio);
+});
+
+function montarPayload(l, p){
+  return {
+    evento: CONFIG.evento,
+    campanha: CONFIG.tag,
+    cliente: { nome:l.nome, email:l.email, telefone:'55' + l.telefone, data_nascimento:l.nascimentoIso, data_nascimento_br:l.nascimentoBr },
+    premio: { id:p.id, nome:[p.valor, sufixo(p), p.onde].filter(Boolean).join(' '), cupom:p.cupom, regras:`${p.regra}. ${CONFIG.validadeCupons}.` },
+    origem: `lp-roleta-${CONFIG.slug}`,
+    id_participacao: l.id,
+    enviado_em: new Date().toISOString(),
+  };
+}
+
+const novoId = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+
+function registrarParticipacao(l, payload){
+  const ja = store.get(KEYS.participantes, []); ja.push(l.email, l.telefone); store.set(KEYS.participantes, ja);
+  const log = store.get(KEYS.log, []); log.push(payload); store.set(KEYS.log, log);
+}
+
+function mostrarResultado(l, p){
+  $('#resultHello').textContent = `Parabéns, ${primeiroNome(l.nome)}!`;
+  $('#resultValue').textContent = p.valor;
+  $('#resultOff').textContent = sufixo(p);
+  $('#resultWhere').textContent = p.onde;
+  $('#resultRules').textContent = `${p.regra} · ${CONFIG.validadeCupons}`;
+  $('#resultEmail').textContent = l.email;
+  $('#resultPhone').textContent = maskPhone(l.telefone);
+  $('#resultModal').hidden = false;
+  confete();
+  setTimeout(() => $('#againBtn').focus({ preventScroll:true }), 400);
+  clearTimeout(resetTimer);
+  resetTimer = setTimeout(reiniciar, CONFIG.resetAposResultadoSeg * 1000);
+}
+
+function reiniciar(){
+  clearTimeout(resetTimer); clearTimeout(ociosoTimer);
+  document.activeElement?.blur?.();
+  $('#resultModal').hidden = true;
+  form.reset(); ['nome','email','telefone','nascimento'].forEach(limparErro); $('#emailSuggest').hidden = true;
+  lead = null;
+  stage.classList.remove('is-ready', 'is-spinning'); stage.dataset.state = 'form';
+  spinBtn.disabled = true; $('#hubHint').textContent = 'CADASTRE-SE';
+  cabecalhoInicial();
+  form.style.translate = ''; deslocamento = 0;
+  form.hidden = false; void form.offsetWidth; form.classList.remove('is-leaving');
+  mode = 'idle';
+  ajustarLayout();
+}
+$('#againBtn').addEventListener('click', reiniciar);
+
+/* ——— Encaixe na tela: sem rolagem, a roleta se ajusta ao espaço livre ——— */
+const play = $('#play');
+let ultimoP = 0;
+function ajustarLayout(){
+  // menos de ~72rem de altura (celular, tablet deitado): versão compacta
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  document.body.classList.toggle('compacto', innerHeight / rem < 72);
+  const P = play.clientHeight, L = play.clientWidth;
+  if (!P || !L) return;
+  if (form.contains(document.activeElement) && ultimoP && P < ultimoP) return; // teclado aberto: não encolhe
+  ultimoP = P;
+  // depois do cadastro o título "Boa sorte" ocupa o topo do palco: reserva a altura dele em cima e embaixo
+  const reserva = form.hidden ? 2 * ($('.stage__head').offsetHeight + rem * 0.6) : 0;
+  // no cadastro a roleta fica pelo menos 25% maior que o card, para o ponteiro e o maior prêmio aparecerem acima dele
+  const base = form.hidden ? L * 0.86 : Math.max(L * 0.86, form.offsetHeight * 1.25);
+  const w = Math.min(base, (P - reserva) / 1.12);
+  document.documentElement.style.setProperty('--wheel', `${Math.floor(w)}px`);
+}
+new ResizeObserver(ajustarLayout).observe(play);
+new ResizeObserver(ajustarLayout).observe(form);
+document.fonts?.ready.then(ajustarLayout);
+ajustarLayout();
+
+/* ——— Teclado virtual do totem: sobe o card para o campo focado ficar visível ——— */
+if ('virtualKeyboard' in navigator) { try { navigator.virtualKeyboard.overlaysContent = true; } catch {} }
+let deslocamento = 0;
+function bordaVisivel(){
+  const vk = navigator.virtualKeyboard?.boundingRect?.height || 0;
+  if (vk) return innerHeight - vk;
+  const vv = window.visualViewport; return vv ? vv.offsetTop + vv.height : innerHeight;
+}
+function ajustarTeclado(){
+  const el = document.activeElement, borda = bordaVisivel();
+  const campo = el && el.tagName === 'INPUT' && el.type !== 'checkbox' && form.contains(el);
+  if (innerHeight - borda < 80 || form.hidden || !campo) { deslocamento = 0; form.style.translate = ''; return; }
+  const fundoCampo = el.getBoundingClientRect().bottom + deslocamento;
+  const topoCard = form.getBoundingClientRect().top + deslocamento;
+  deslocamento = Math.max(0, Math.min(fundoCampo + 16 - borda, topoCard - 8));
+  form.style.translate = deslocamento ? `0 ${-deslocamento}px` : '';
+}
+navigator.virtualKeyboard?.addEventListener('geometrychange', ajustarTeclado);
+window.visualViewport?.addEventListener('resize', ajustarTeclado);
+form.addEventListener('focusin', () => setTimeout(ajustarTeclado, 60));
+form.addEventListener('focusout', () => setTimeout(ajustarTeclado, 120));
+
+/* ——— Modo totem: limpa cadastro abandonado, sem zoom nem menu de toque longo ——— */
+let ociosoTimer = null;
+function marcarAtividade(){
+  clearTimeout(ociosoTimer);
+  if (stage.dataset.state !== 'form') return;
+  const temDados = Object.values(inputs).some((i) => i.value);
+  if (temDados) ociosoTimer = setTimeout(() => { if (stage.dataset.state === 'form') reiniciar(); }, CONFIG.resetCadastroOciosoSeg * 1000);
+}
+['pointerdown', 'input', 'keydown'].forEach((ev) => document.addEventListener(ev, marcarAtividade, { passive:true }));
+addEventListener('contextmenu', (e) => e.preventDefault());
+addEventListener('gesturestart', (e) => e.preventDefault());
+
+/* ——— Envio para a Revi: uma tentativa, sem fila de reenvio ——— */
+async function post(url, payload){
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(payload), signal:ctrl.signal, keepalive:true });
+    if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status:r.status });
+  } finally { clearTimeout(t); }
+}
+// falha não é repetida: fica registrada neste aparelho para o operador ver (o ?exportar=1 tem todas as participações)
+function registrarFalha(etapa, payload, err){
+  console.error(`[roleta] envio "${etapa}" falhou (${err.message}) — não será repetido`, payload);
+  const f = store.get(KEYS.falhas, []); f.push({ etapa, erro:err.status ? `HTTP ${err.status}` : 'sem resposta', payload }); store.set(KEYS.falhas, f);
+  atualizarStatus();
+}
+async function enviarEtapa(etapa, payload){
+  const url = CONFIG.webhooks[etapa];
+  if (!url) { console.info(`[roleta] webhook "${etapa}" não configurado — envio ignorado`); return; }
+  try { await post(url, payload); } catch (err) { registrarFalha(etapa, payload, err); }
+}
+function atualizarStatus(){
+  const s = $('#sync');
+  if (!navigator.onLine) { s.className = 'sync is-pending'; s.textContent = 'Sem internet · os envios vão falhar'; return; }
+  const f = store.get(KEYS.falhas, []);
+  if (f.length) { const u = f[f.length - 1]; s.className = 'sync is-error'; s.textContent = `${f.length} envio(s) falharam · último: ${u.etapa}, ${u.erro}`; return; }
+  s.className = 'sync'; s.textContent = MODO_TESTE ? 'Modo teste · envios em dia' : '';
+}
+addEventListener('online', atualizarStatus);
+addEventListener('offline', atualizarStatus);
+atualizarStatus();
+
+/* ——— Utilitários de operação ———
+   ?teste=1     desliga o bloqueio de participação repetida e mostra o status de envio
+   ?limpar=1    apaga a lista de quem já participou e as falhas de envio neste aparelho
+   ?exportar=1  baixa um CSV de backup com as participações deste aparelho */
+if (params.has('limpar')) { store.set(KEYS.participantes, []); store.set(KEYS.falhas, []); history.replaceState(null, '', location.pathname); }
+if (params.has('exportar')) {
+  const log = store.get(KEYS.log, []);
+  const linhas = [['data','nome','email','telefone','nascimento','premio','cupom']].concat(
+    log.map((p) => [p.enviado_em, p.cliente.nome, p.cliente.email, p.cliente.telefone, p.cliente.data_nascimento_br, p.premio.nome, p.premio.cupom]));
+  const csv = linhas.map((l) => l.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `roleta-${CONFIG.slug}-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+/* ——— Confete ——— */
+function confete(){
+  const cv = $('#confetti'), ctx = cv.getContext('2d');
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr;
+  const cores = [TEMA.acento, TEMA.acentoClaro, TEMA.acentoEscuro, TEMA.escuro, '#ffffff', TEMA.claro];
+  const N = REDUCED ? 60 : 220; const parts = [];
+  for (let k = 0; k < N; k++) {
+    const lado = k % 2 ? 1 : -1;
+    parts.push({
+      x: lado > 0 ? W * 0.08 : W * 0.92, y: H * 0.72,
+      vx: (-lado) * (6 + Math.random() * 12) * dpr, vy: -(14 + Math.random() * 16) * dpr,
+      w: (6 + Math.random() * 8) * dpr, h: (8 + Math.random() * 12) * dpr,
+      r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.35,
+      cor: cores[k % cores.length], wob: Math.random() * 10, circ: Math.random() < 0.18,
+    });
+  }
+  const t0 = performance.now();
+  (function loop(t){
+    const el = t - t0; ctx.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      p.vy += 0.42 * dpr; p.vx *= 0.985; p.vy *= 0.985;
+      p.x += p.vx + Math.sin((el / 180) + p.wob) * 0.8 * dpr; p.y += p.vy; p.r += p.vr;
+      ctx.save(); ctx.globalAlpha = Math.max(0, 1 - Math.max(0, el - 3600) / 900);
+      ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.cor;
+      if (p.circ) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r * 2)) + 2);
+      ctx.restore();
+    }
+    if (el < 4500) requestAnimationFrame(loop); else ctx.clearRect(0, 0, W, H);
+  })(t0);
+}
+</script>
+</body>
+</html>
