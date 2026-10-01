@@ -68,3 +68,8 @@ node --env-file=.env dev.mjs
 - O `.env` está no `.gitignore`. Na Vercel, a URL e o secret ficam em Environment Variables.
 - Teste sempre com o seu próprio contato: com a automação ativa, a Revi envia o template para quem está no payload.
 - Não há fila de reenvio: se um envio falhar, o rodapé fica vermelho e o `?exportar=1` tem todas as participações.
+
+## Licença
+
+[MIT](LICENSE): use, adapte e distribua à vontade, mantendo o aviso de copyright. O nome e o logo da Revi
+continuam sendo marcas da Revi.
